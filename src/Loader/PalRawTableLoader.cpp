@@ -66,6 +66,17 @@ namespace Palworld {
         // 114). Apply the same data straight into the composite table's own RowMap through the engine AddRow path
         // (proven by the pals loader adding to DT_PalMonsterParameter), so lookups on the composite resolve.
         Apply(compositeDatatable->GetName(), static_cast<RC::Unreal::UDataTable*>(compositeDatatable));
+        // Mods may also key their data on a parent table's name (Paldemonium: raw/DT_WazaMasterLevel_Common.json).
+        // Those rows reached the parent above but never the composite the game reads from, so the variant pals had
+        // no level-up moves (runs 133-136). Land the parent-keyed data in the composite's own RowMap as well.
+        for (auto& parentTable : parentTables)
+        {
+            auto parentName = parentTable->GetName();
+            if (parentName != compositeDatatable->GetName())
+            {
+                Apply(parentName, static_cast<RC::Unreal::UDataTable*>(compositeDatatable));
+            }
+        }
 #endif
     }
 
