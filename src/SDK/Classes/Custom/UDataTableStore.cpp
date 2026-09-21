@@ -45,6 +45,9 @@ namespace UECustom {
 
     void UDataTableRegistry::Add(const std::string& name, RC::Unreal::UDataTable* datatable)
     {
+#ifdef __linux__
+        { std::lock_guard<std::mutex> guard(m_mutex); m_registered.insert(datatable); }
+#endif
         m_datatableMap.insert_or_assign(name, datatable);
 
         if (datatable->GetClassPrivate() == UECustom::UCompositeDataTable::StaticClass())
@@ -74,4 +77,21 @@ namespace UECustom {
         static RC::Unreal::uint64 datatableSerializeCallbackId = 0;
         return datatableSerializeCallbackId++;
     }
+
+#ifdef __linux__
+    bool UDataTableRegistry::Contains(const void* datatable)
+    {
+        std::lock_guard<std::mutex> guard(m_mutex);
+        return m_registered.count(datatable) != 0;
+    }
+
+    bool UDataTableRegistry::Remove(const void* datatable)
+    {
+        std::lock_guard<std::mutex> guard(m_mutex);
+        if (!m_registered.erase(datatable)) return false;
+        for (auto it = m_datatableMap.begin(); it != m_datatableMap.end();) { if (it->second == datatable) it = m_datatableMap.erase(it); else ++it; }
+        for (auto it = m_parentTableNameToCompositeDatatableMap.begin(); it != m_parentTableNameToCompositeDatatableMap.end();) { if (it->second == datatable) it = m_parentTableNameToCompositeDatatableMap.erase(it); else ++it; }
+        return true;
+    }
+#endif
 }

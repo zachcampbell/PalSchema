@@ -1,3 +1,4 @@
+#include <Helpers/String.hpp>
 #include "Loader/PalModLoaderBase.h"
 #include "Unreal/Engine/UDataTable.hpp"
 #include "Utility/JsonHelpers.h"
@@ -35,7 +36,7 @@ namespace Palworld {
         OnSetup();
     }
 
-    void PalModLoaderBase::AutoReload(const std::filesystem::path::string_type& modName, const std::filesystem::path& modFilePath)
+    void PalModLoaderBase::AutoReload(const RC::StringType& modName, const std::filesystem::path& modFilePath)
     {
         OnAutoReload(modName, modFilePath);
     }
@@ -99,7 +100,7 @@ namespace Palworld {
                 if (entry.is_directory())
                 {
                     auto& path = entry.path();
-                    auto folderName = path.stem().native();
+                    auto folderName = RC::to_generic_string(path.stem().string());
                     callback(entry.path(), folderName);
                 }
             }
@@ -136,7 +137,7 @@ namespace Palworld {
 
     void PalModLoaderBase::OnLoad(const std::filesystem::path& loaderPath, const RC::StringType& modName, const EEngineLifecyclePhase& engineLifecyclePhase) {}
 
-    void PalModLoaderBase::OnAutoReload(const std::filesystem::path::string_type& modName, const std::filesystem::path& modFilePath) {}
+    void PalModLoaderBase::OnAutoReload(const RC::StringType& modName, const std::filesystem::path& modFilePath) {}
 
     void PalModLoaderBase::PostInitialize() {}
 

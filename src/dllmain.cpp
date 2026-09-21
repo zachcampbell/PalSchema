@@ -1,4 +1,6 @@
 #include "Mod/CppUserModBase.hpp"
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "UE4SSProgram.hpp"
 #include "Loader/PalMainLoader.h"
 #include "Generator/JsonSchema/JsonSchemaGenerator.h"
@@ -17,7 +19,7 @@ class PalSchema : public RC::CppUserModBase
 public:
     PalSchema() : CppUserModBase()
     {
-        auto Version = std::format(STR("{}.{}.{}"), VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+        auto Version = fmt::format(STR("{}.{}.{}"), VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
 
         ModName = STR("PalSchema");
         ModVersion = Version;
@@ -56,6 +58,7 @@ public:
         return fs::exists(MemberVariableLayoutFile);
     }
 
+#ifdef HAS_GUI
     auto render_schema_generator()
     {
         static bool bGeneratingSchemas = false;
@@ -95,6 +98,8 @@ public:
         PS::Log<LogLevel::Verbose>(STR("Finished registering Pal Schema tab for GUI Console.\n"));
     }
 
+#endif
+
     auto on_update() -> void override
     {
     }
@@ -105,6 +110,9 @@ public:
 
     auto on_unreal_init() -> void override
     {
+#ifdef __linux__
+        UECustom::EnsureGameThreadDrain();
+#endif
         MainLoader.Initialize();
     }
 private:
@@ -112,11 +120,19 @@ private:
 };
 
 
+#ifdef _WIN32
 #define PALSCHEMA_API __declspec(dllexport)
+#else
+#define PALSCHEMA_API __attribute__((visibility("default")))
+#endif
 extern "C"
 {
     PALSCHEMA_API RC::CppUserModBase* start_mod()
     {
+#ifndef _WIN32
+        extern void palhook_bind_program();
+        palhook_bind_program();
+#endif
         return new PalSchema();
     }
 

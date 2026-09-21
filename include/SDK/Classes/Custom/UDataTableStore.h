@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_set>
 
 #include <functional>
 #include <unordered_map>
@@ -24,7 +25,15 @@ namespace UECustom {
         void Add(const std::string& name, RC::Unreal::UDataTable* datatable);
 
         void Add(RC::Unreal::UDataTable* datatable);
+#ifdef __linux__
+        // palhook: drop a table the engine destroyed (seeded or hooked alike); driven by an FUObjectDeleteListener.
+        bool Remove(const void* datatable);
+        bool Contains(const void* datatable);
+#endif
     private:
+#ifdef __linux__
+        std::unordered_set<const void*> m_registered;
+#endif
         std::mutex m_mutex;
         std::unordered_map<std::string, RC::Unreal::UDataTable*> m_datatableMap;
         std::unordered_map<std::string, RC::Unreal::UDataTable*> m_parentTableNameToCompositeDatatableMap;

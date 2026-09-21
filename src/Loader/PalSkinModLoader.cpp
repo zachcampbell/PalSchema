@@ -1,4 +1,6 @@
 #include "Unreal/CoreUObject/UObject/Class.hpp"
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/UObject.hpp"
 #include "Unreal/UObjectGlobals.hpp"
 #include "Unreal/UScriptStruct.hpp"
@@ -244,7 +246,7 @@ namespace Palworld {
 
 	void PalSkinModLoader::AddTranslation(const RC::Unreal::FName& SkinId, const nlohmann::json& Data)
 	{
-		auto FixedSkinId = std::format(STR("SKIN_NAME_{}"), SkinId.ToString());
+		auto FixedSkinId = fmt::format(STR("SKIN_NAME_{}"), SkinId.ToString());
 		auto TranslationRowStruct = m_skinTranslationTable->GetRowStruct().Get();
 
         auto TextProperty = PropertyHelper::GetPropertyByName(TranslationRowStruct, STR("TextData"));
@@ -266,7 +268,7 @@ namespace Palworld {
 
 	void PalSkinModLoader::EditTranslation(const RC::Unreal::FName& SkinId, const nlohmann::json& Data)
 	{
-		auto FixedSkinId = std::format(STR("SKIN_NAME_{}"), SkinId.ToString());
+		auto FixedSkinId = fmt::format(STR("SKIN_NAME_{}"), SkinId.ToString());
 		auto TranslationRowStruct = m_skinTranslationTable->GetRowStruct().Get();
 
         auto TextProperty = PropertyHelper::GetPropertyByName(TranslationRowStruct, STR("TextData"));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nlohmann/json.hpp"
+#include "Unreal/FProperty.hpp"
 #include "SDK/StaticClassStorage.h"
 #include "Utility/Logging.h"
 
@@ -68,6 +69,9 @@ namespace Palworld::PropertyHelper {
     std::string GetPropertyTypeAsUTF8String(RC::Unreal::FProperty* Property);
 
     RC::Unreal::FProperty* GetPropertyByName(RC::Unreal::UClass* Class, const RC::StringType& PropertyName);
+
+    template <RC::Unreal::FFieldDerivative FFieldDerivedType>
+    FFieldDerivedType* CastProperty(RC::Unreal::FField* Field);
 
     template <RC::Unreal::FFieldDerivative FFieldDerivedType>
     FFieldDerivedType* GetPropertyByName(RC::Unreal::UClass* Class, const RC::StringType& PropertyName)
@@ -172,4 +176,13 @@ namespace Palworld::PropertyHelper {
     {
         return Field != nullptr && IsPropertyA<FFieldDerivedType>(Field) ? static_cast<FFieldDerivedType*>(Field) : nullptr;
     }
+}
+
+namespace Palworld {
+    // palhook Linux guard (LinuxSoftRefGuard.cpp)
+    extern bool g_linux_soft_ref_writes_enabled;
+    extern bool g_linux_soft_class_writes_enabled;
+    void LinuxRejectSoftClassWrite(RC::Unreal::FProperty* Property);
+    void LinuxPreflightRow(RC::Unreal::UScriptStruct* RowStruct, const nlohmann::json& Data);
+    void LinuxRejectSoftRefWrite(RC::Unreal::FProperty* Property);
 }

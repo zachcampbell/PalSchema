@@ -1,3 +1,5 @@
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/FProperty.hpp"
 #include "Unreal/Property/FEnumProperty.hpp"
 #include "Unreal/Property/FStrProperty.hpp"
@@ -315,6 +317,9 @@ namespace Palworld {
 
     void PropertyHelper::SetSoftClassPropertyValueFromJsonValue(void* Data, RC::Unreal::FSoftClassProperty* Property, const nlohmann::json& Value)
     {
+#ifdef __linux__
+        LinuxRejectSoftClassWrite(Property);
+#endif
         ValidateJsonValueType(Property, Value);
 
         auto ParsedValue = Value.get<std::string>();
@@ -327,6 +332,9 @@ namespace Palworld {
 
     void PropertyHelper::SetSoftObjectPropertyValueFromJsonValue(void* Data, RC::Unreal::FSoftObjectProperty* Property, const nlohmann::json& Value)
     {
+#ifdef __linux__
+        LinuxRejectSoftRefWrite(Property);
+#endif
         ValidateJsonValueType(Property, Value);
         const std::string resourcePrefix = "$resource/";
 
@@ -341,7 +349,7 @@ namespace Palworld {
             SoftObjectPath = SoftObjectPath.erase(0, resourcePrefix.length());
 
             // "/Engine/Transient.PalSchema/Resources/modname/resourcename"
-            SoftObjectPath = std::format(TEXT("/Engine/Transient.PalSchema/Resources/{}"), SoftObjectPath);
+            SoftObjectPath = fmt::format(STR("/Engine/Transient.PalSchema/Resources/{}"), SoftObjectPath);
         }
 
         auto SoftObjectPtr = RC::Unreal::FSoftObjectPtr(RC::Unreal::FSoftObjectPath(FString(SoftObjectPath)));

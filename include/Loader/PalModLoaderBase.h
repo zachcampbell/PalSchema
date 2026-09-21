@@ -62,6 +62,7 @@ namespace Palworld {
         virtual void PostInitialize();
 
         virtual void OnDatatableSerialized(RC::Unreal::UDataTable* datatable);
+        friend class PalMainLoader; // palhook: replays serialize notifications for boot-loaded tables
     private:
         void Initialize_Internal();
 

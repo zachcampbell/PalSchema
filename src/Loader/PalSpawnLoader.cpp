@@ -1,4 +1,6 @@
 #include "Unreal/CoreUObject/UObject/Class.hpp"
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/UEnum.hpp"
 #include "Unreal/Engine/UDataTable.hpp"
 #include "Unreal/Transform.hpp"
@@ -15,6 +17,7 @@
 #include "Utility/EnumHelpers.h"
 #include "Utility/JsonHelpers.h"
 #include "Loader/PalSpawnLoader.h"
+#include "SDK/Helper/LinuxSpawn.h"
 #include "SDK/PalSignatures.h"
 
 using namespace RC;
@@ -34,7 +37,7 @@ namespace Palworld {
         m_onLevelHiddenFunction->UnregisterHook(m_onLevelHiddenCallbackId);
     }
 
-    void PalSpawnLoader::Reload(const std::filesystem::path::string_type& modName, const nlohmann::json& data)
+    void PalSpawnLoader::Reload(const RC::StringType& modName, const nlohmann::json& data)
     {
         UnloadMod(modName);
         LoadSpawns(modName, data);
@@ -57,7 +60,7 @@ namespace Palworld {
         });
     }
 
-    void PalSpawnLoader::OnAutoReload(const std::filesystem::path::string_type& modName, const std::filesystem::path& modFilePath)
+    void PalSpawnLoader::OnAutoReload(const RC::StringType& modName, const std::filesystem::path& modFilePath)
     {
         PS::JsonHelpers::ParseJsonFileInPath(modFilePath, [&](const nlohmann::json& data) {
             Reload(modName, data);
@@ -161,7 +164,7 @@ namespace Palworld {
         }
     }
 
-    void PalSpawnLoader::RegisterSpawn(const std::filesystem::path::string_type& modName, const nlohmann::json& value)
+    void PalSpawnLoader::RegisterSpawn(const RC::StringType& modName, const nlohmann::json& value)
     {
         PS::JsonHelpers::ValidateFieldExists(value, "Type");
         PS::JsonHelpers::ValidateFieldExists(value, "Location");
@@ -209,7 +212,7 @@ namespace Palworld {
         Output::send<LogLevel::Normal>(STR("Added new spawn: {}\n"), spawnerInfo.ToString());
     }
 
-    void PalSpawnLoader::RegisterSheet(const std::filesystem::path::string_type& modName, PS::SpawnerInfo& spawnerInfo, const nlohmann::json& value)
+    void PalSpawnLoader::RegisterSheet(const RC::StringType& modName, PS::SpawnerInfo& spawnerInfo, const nlohmann::json& value)
     {
         PS::JsonHelpers::ValidateFieldExists(value, "SpawnGroupList");
         auto& spawnGroupList = value.at("SpawnGroupList");
@@ -230,7 +233,7 @@ namespace Palworld {
             PS::JsonHelpers::ParseString(value, "SpawnerName", spawnerName);
 
             auto spawnerNameWide = RC::to_generic_string(spawnerName);
-            spawnerNameWide = std::format(TEXT("{}_{}"), spawnerInfo.ModName, spawnerNameWide);
+            spawnerNameWide = fmt::format(STR("{}_{}"), spawnerInfo.ModName, spawnerNameWide);
 
             spawnerInfo.SpawnerName = FName(spawnerNameWide, FNAME_Add);
         }
@@ -251,7 +254,7 @@ namespace Palworld {
         }
     }
 
-    void PalSpawnLoader::RegisterMonoNPC(const std::filesystem::path::string_type& modName, PS::SpawnerInfo& spawnerInfo, const nlohmann::json& value)
+    void PalSpawnLoader::RegisterMonoNPC(const RC::StringType& modName, PS::SpawnerInfo& spawnerInfo, const nlohmann::json& value)
     {
         PS::JsonHelpers::ValidateFieldExists(value, "NPCID");
         PS::JsonHelpers::ValidateFieldExists(value, "Level");
@@ -315,7 +318,8 @@ namespace Palworld {
         }
 
         auto transform = FTransform(spawnerInfo.Rotation, spawnerInfo.Location, { 1.0, 1.0, 1.0 });
-        auto spawnedActor = world->SpawnActor(bpClass, &transform);
+        auto spawnedActor = UECustom::LinuxSpawnActor(world, bpClass, spawnerInfo.Location, spawnerInfo.Rotation);
+        if (!spawnedActor) { PS::Log<LogLevel::Error>(STR("SpawnActor returned null for {}\n"), spawnerInfo.NPCID.ToString()); return; }
         auto monoSpawner = static_cast<AMonoNPCSpawner*>(spawnedActor);
         monoSpawner->GetHumanName() = spawnerInfo.NPCID;
         monoSpawner->GetCharaName() = spawnerInfo.NPCID;
@@ -325,7 +329,6 @@ namespace Palworld {
         spawnerInfo.bExistsInWorld = true;
         spawnerInfo.Cell = cell;
         spawnerInfo.SpawnerActor = monoSpawner;
-
         PS::Log<LogLevel::Verbose>(STR("Spawned {} in {}\n"), spawnerInfo.ToString(), cell->GetName());
     }
 
@@ -346,7 +349,7 @@ namespace Palworld {
         }
 
         auto transform = FTransform(spawnerInfo.Rotation, spawnerInfo.Location, { 1.0, 1.0, 1.0 });
-        auto spawnedActor = world->SpawnActor(sheetBPClass, &transform);
+        auto spawnedActor = UECustom::LinuxSpawnActor(world, sheetBPClass, spawnerInfo.Location, spawnerInfo.Rotation);
         auto palSheet = static_cast<APalSpawnerStandard*>(spawnedActor);
 
         PalSpawnerGroup spawnerGroup;
@@ -441,7 +444,7 @@ namespace Palworld {
         }
     }
 
-    void PalSpawnLoader::UnloadMod(const std::filesystem::path::string_type& modName)
+    void PalSpawnLoader::UnloadMod(const RC::StringType& modName)
     {
         std::erase_if(m_spawns, [&](PS::SpawnerInfo& spawn) {
             if (spawn.ModName == modName)

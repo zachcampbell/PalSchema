@@ -26,8 +26,11 @@ namespace UECustom {
         if (!fn)
         {
             auto staticClass = StaticClass();
-            auto fnAddress = Palworld::GetVirtualFunctionFromClass(staticClass, 120);
-            fn = static_cast<FnSignature>(fnAddress);
+            // Linux: every UE4SS/Windows vtable index after the destructor is +1 here (Itanium double destructor).
+            // Index 121 (0x3c8) on the BlueprintGeneratedClass vtable is UBlueprintGeneratedClass::PurgeClass
+            // (0xa15f310, 21 bytes, calls UClass::PurgeClass 0x7a44e00); 120 would be a different function.
+            auto fnAddress = Palworld::GetVirtualFunctionFromClass(staticClass, 121);
+            fn = reinterpret_cast<FnSignature>(fnAddress);
         }
 
         if (!fn)

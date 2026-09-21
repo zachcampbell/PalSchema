@@ -38,4 +38,7 @@ namespace UECustom {
     };
 
     void AsyncTask(ENamedThreads Thread, const RC::Unreal::TUniqueFunction<void()>& Function);
+#ifdef __linux__
+    void EnsureGameThreadDrain();
+#endif
 }

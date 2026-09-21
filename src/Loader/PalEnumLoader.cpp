@@ -1,4 +1,6 @@
 #include "Loader/PalEnumLoader.h"
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/CoreUObject/UObject/Class.hpp"
 #include "Unreal/UEnum.hpp"
 #include "Helpers/String.hpp"
@@ -92,7 +94,7 @@ namespace Palworld {
                             enumValueString, enumNamespace));
                 }
 
-                auto enumValueStringWide = std::format(STR("{}::{}"), enumNamespaceWide, RC::to_generic_string(enumValueString));
+                auto enumValueStringWide = fmt::format(STR("{}::{}"), enumNamespaceWide, RC::to_generic_string(enumValueString));
 
                 auto enumName = FName(enumValueStringWide, FNAME_Add);
                 int32 indexToInsertAt = enumObject->NumEnums() - 1;

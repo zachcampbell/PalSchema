@@ -1,4 +1,5 @@
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include "UE4SSProgram.hpp"
 #include "Unreal/SoftObjectPtr.hpp"
 #include "Unreal/CoreUObject/UObject/UnrealType.hpp"

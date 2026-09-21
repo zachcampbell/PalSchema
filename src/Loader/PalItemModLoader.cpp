@@ -1,4 +1,9 @@
 #include "Unreal/CoreUObject/UObject/UnrealType.hpp"
+#ifndef _WIN32
+#define _ReturnAddress() __builtin_return_address(0)
+#endif
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/Engine/UDataTable.hpp"
 #include "SDK/Classes/Custom/UObjectGlobals.h"
 #include "SDK/Classes/PalItemIDManager.h"
@@ -335,7 +340,7 @@ namespace Palworld {
 	{
 		if (Data.contains("Name"))
 		{
-			auto RowId = std::format(TEXT("ITEM_NAME_{}"), ItemId.ToString());
+			auto RowId = fmt::format(STR("ITEM_NAME_{}"), ItemId.ToString());
 			auto RowStruct = m_nameTranslationTable->GetRowStruct().Get();
 			auto TextDataProperty = RowStruct->GetPropertyByName(TEXT("TextData"));
             if (TextDataProperty)
@@ -359,7 +364,7 @@ namespace Palworld {
 
 		if (Data.contains("Description"))
 		{
-			auto RowId = std::format(TEXT("ITEM_DESC_{}"), ItemId.ToString());
+			auto RowId = fmt::format(STR("ITEM_DESC_{}"), ItemId.ToString());
             auto RowStruct = m_descriptionTranslationTable->GetRowStruct().Get();
             auto TextDataProperty = RowStruct->GetPropertyByName(TEXT("TextData"));
             if (TextDataProperty)
@@ -386,7 +391,7 @@ namespace Palworld {
 	{
 		if (Data.contains("Name"))
 		{
-			auto RowId = std::format(TEXT("ITEM_NAME_{}"), ItemId.ToString());
+			auto RowId = fmt::format(STR("ITEM_NAME_{}"), ItemId.ToString());
 			auto RowStruct = m_nameTranslationTable->GetRowStruct().Get();
 			auto TextDataProperty = RowStruct->GetPropertyByName(TEXT("TextData"));
 			if (TextDataProperty)
@@ -401,7 +406,7 @@ namespace Palworld {
 
 		if (Data.contains("Description"))
 		{
-			auto RowId = std::format(TEXT("ITEM_DESC_{}"), ItemId.ToString());
+			auto RowId = fmt::format(STR("ITEM_DESC_{}"), ItemId.ToString());
 			auto RowStruct = m_nameTranslationTable->GetRowStruct().Get();
 			auto TextDataProperty = RowStruct->GetPropertyByName(TEXT("TextData"));
 			if (TextDataProperty)

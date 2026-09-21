@@ -34,6 +34,7 @@ namespace Palworld {
 		void Initialize();
 	private:
         std::vector<std::unique_ptr<PalModLoaderBase>> m_loaders;
+        std::vector<RC::Unreal::UDataTable*> m_seededTables; // palhook: tables alive before PalSchema started
 
         std::unique_ptr<PS::FileWatchWrapper> m_fileWatcher;
 

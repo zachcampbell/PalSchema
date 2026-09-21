@@ -41,18 +41,25 @@ void Palworld::UnrealOffsets::Initialize()
 
     PS::Log<LogLevel::Verbose>(STR("Unreal Version set to {}.{}.\n"), Unreal::Version::Major, Unreal::Version::Minor);
 
+    // palhook: on the Linux port C++ mods start after setup_unreal, so UE4SS has already resolved FName,
+    // parsed MemberVariableLayout.ini and built the versioned container (with the Palworld vtable fixes).
+    // Only override what the signature table actually provides, and never rebuild the container.
     auto FNameConstructorAddress = Palworld::SignatureManager::GetSignature("FName::Constructor");
-    FName::ConstructorInternal.assign_address(FNameConstructorAddress);
-    PS::Log<LogLevel::Verbose>(STR("FName::Constructor was assigned address of {}\n"), FNameConstructorAddress);
+    if (FNameConstructorAddress) FName::ConstructorInternal.assign_address(FNameConstructorAddress);
+    PS::Log<LogLevel::Verbose>(STR("FName::Constructor address {} (null keeps UE4SS's)\n"), FNameConstructorAddress);
 
     auto FNameToStringAddress = Palworld::SignatureManager::GetSignature("FName::ToString_Wchar");
-    FName::ToStringInternal.assign_address(FNameToStringAddress);
-    PS::Log<LogLevel::Verbose>(STR("FName::ToString was assigned address of {}\n"), FNameToStringAddress);
+    if (FNameToStringAddress) FName::ToStringInternal.assign_address(FNameToStringAddress);
+    PS::Log<LogLevel::Verbose>(STR("FName::ToString address {} (null keeps UE4SS's)\n"), FNameToStringAddress);
 
     ApplyMemberVariableLayout();
 
+#ifndef __linux__
     UnrealInitializer::InitializeVersionedContainer();
     PS::Log<LogLevel::Verbose>(STR("Versioned Container initialized.\n"));
+#else
+    PS::Log<LogLevel::Verbose>(STR("Versioned container left to UE4SS (Linux).\n"));
+#endif
 }
 
 void Palworld::UnrealOffsets::InitializeGMalloc()

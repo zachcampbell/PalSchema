@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Unreal/NameTypes.hpp"
+#include "Unreal/AActor.hpp"
 #include "Unreal/UnrealCoreStructs.hpp"
 #include "Unreal/Rotator.hpp"
 #include "SDK/Structs/Guid.h"

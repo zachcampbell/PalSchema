@@ -1,3 +1,5 @@
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/CoreUObject/UObject/UnrealType.hpp"
 #include "SDK/Classes/PalEnum.h"
 #include "SDK/Classes/Property/PalEnumProperty.h"
@@ -85,7 +87,7 @@ namespace PS {
             UPalEnum* palEnum = palEnumProp->GetPalEnum();
 
             RC::StringType nameSpace = palEnum->GetName();
-            RC::StringType enumName = std::format(TEXT("{}::{}"), nameSpace, enumString);
+            RC::StringType enumName = fmt::format(STR("{}::{}"), nameSpace, enumString);
 
             for (const FEnumNamePair& enumNamePair : palEnum->GetEnumNames())
             {

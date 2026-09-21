@@ -1,4 +1,6 @@
 #include <regex>
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include "Unreal/CoreUObject/UObject/Class.hpp"
 #include "Unreal/CoreUObject/UObject/UnrealType.hpp"
 #include "Unreal/UObject.hpp"
@@ -49,7 +51,7 @@ namespace Palworld {
         }
     }
 
-    void PalBlueprintModLoader::OnAutoReload(const std::filesystem::path::string_type& modName, const std::filesystem::path& modFilePath)
+    void PalBlueprintModLoader::OnAutoReload(const RC::StringType& modName, const std::filesystem::path& modFilePath)
     {
         PS::JsonHelpers::ParseJsonFileInPath(modFilePath, [&](const nlohmann::json& data) {
             LoadUnsafe(data);
@@ -94,7 +96,12 @@ namespace Palworld {
             return false;
         }
 
+#ifdef __linux__
+        // palhook: 5.1 baseline UObject::PostLoad is 0xA0 (index 20); Itanium double destructor slot -> index 21.
+        void* postloadPtr = Palworld::GetVirtualFunctionFromVTable(vtable, 21);
+#else
         void* postloadPtr = Palworld::GetVirtualFunctionFromVTable(vtable, 20);
+#endif
         PS::Log<LogLevel::Verbose>(TEXT("Found UBlueprintGeneratedClass::PostLoad: {}\n"), postloadPtr);
 
         PostLoadCallback = [&](UClass* actorClass) {
@@ -116,7 +123,12 @@ namespace Palworld {
             return false;
         }
 
+#ifdef __linux__
+        // palhook: 5.1 baseline AActor::PostInitializeComponents is 0x4F8 (index 159) -> index 160 here.
+        void* postInitCompsPtr = Palworld::GetVirtualFunctionFromVTable(vtable, 160);
+#else
         void* postInitCompsPtr = Palworld::GetVirtualFunctionFromVTable(vtable, 159);
+#endif
         PS::Log<LogLevel::Verbose>(TEXT("Found AActor::PostInitializeComponents: {}\n"), postInitCompsPtr);
 
         PostInitComponentsCallback = [&](AActor* self) {
@@ -163,8 +175,13 @@ namespace Palworld {
             auto assetNameWide = RC::to_generic_string(assetName);
             if (assetNameWide.starts_with(TEXT("/Game/")))
             {
-                static const std::wregex Pattern(LR"(^(.*/)([^/.]+)$)");
-                assetNameWide = std::regex_replace(assetNameWide, Pattern, TEXT("$1$2.$2_C"));
+                // palhook: libstdc++ has no char16_t regex; this is ^(.*/)([^/.]+)$ -> $1$2.$2_C by hand.
+                {
+                    auto slash = assetNameWide.rfind(u'/');
+                    auto tail = assetNameWide.substr(slash == RC::StringType::npos ? 0 : slash + 1);
+                    if (!tail.empty() && tail.find(u'.') == RC::StringType::npos && tail.find(u'/') == RC::StringType::npos)
+                        assetNameWide = assetNameWide + u"." + tail + u"_C";
+                }
 
                 auto softObjectPtr = RC::Unreal::TSoftObjectPtr<UObject>(RC::Unreal::FSoftObjectPath(FString(assetNameWide)));
                 auto asset = UECustom::UKismetSystemLibrary::LoadAsset_Blocking(softObjectPtr);
@@ -274,7 +291,7 @@ namespace Palworld {
             return;
         }
 
-        auto componentFullName = std::format(TEXT("{}_GEN_VARIABLE"), componentName);
+        auto componentFullName = fmt::format(STR("{}_GEN_VARIABLE"), componentName);
         UObject* inheritableComponent = nullptr;
 
         auto inheritableComponentHandler = bpClass->GetInheritableComponentHandler();

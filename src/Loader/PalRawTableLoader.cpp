@@ -59,6 +59,14 @@ namespace Palworld {
                 Apply(compositeDatatable->GetName(), parentTable.Get());
             }
         }
+#ifdef __linux__
+        // palhook: on a dedicated server the composite table built its merged RowMap at boot, before PalSchema
+        // added rows to the _Common parent above. Nothing rebuilds that cache afterward, so FindRowUnchecked on the
+        // composite misses the new rows (Paldemonium ranch actions could not find their DT_PalBPClass rows, run
+        // 114). Apply the same data straight into the composite table's own RowMap through the engine AddRow path
+        // (proven by the pals loader adding to DT_PalMonsterParameter), so lookups on the composite resolve.
+        Apply(compositeDatatable->GetName(), static_cast<RC::Unreal::UDataTable*>(compositeDatatable));
+#endif
     }
 
     void PalRawTableLoader::Apply(const nlohmann::json& data, RC::Unreal::UDataTable* datatable, LoadResult& outResult)
@@ -185,6 +193,9 @@ namespace Palworld {
                 {
                     if (wildcardFilters.IsEmpty() || wildcardFilters.Match(row))
                     {
+#ifdef __linux__
+                        LinuxPreflightRow(datatable->GetRowStruct().Get(), data);
+#endif
                         if (ModifyRowProperties(datatable, key, row, data, outResult))
                         {
                             outResult.SuccessfulModifications++;
@@ -207,6 +218,9 @@ namespace Palworld {
 
         try
         {
+#ifdef __linux__
+            LinuxPreflightRow(rowStruct, data);
+#endif
             if (ModifyRowProperties(datatable, rowName, newRowData.GetData(), data, outResult))
             {
                 datatable->AddRow(rowName, *reinterpret_cast<RC::Unreal::FTableRowBase*>(newRowData.GetData()));
@@ -225,6 +239,9 @@ namespace Palworld {
     {
         try
         {
+#ifdef __linux__
+            LinuxPreflightRow(datatable->GetRowStruct().Get(), data);
+#endif
             if (ModifyRowProperties(datatable, rowName, row, data, outResult))
             {
                 outResult.SuccessfulModifications++;

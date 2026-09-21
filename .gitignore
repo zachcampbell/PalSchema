@@ -25,3 +25,5 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+# Linux mod build output (linux/build-full.sh)
+build-full/

@@ -92,50 +92,86 @@ namespace Palworld {
         return true;
     }
 
+    void PalLanguageModLoader::ApplyTranslationsToTable(RC::Unreal::UDataTable* Table, const nlohmann::json& Rows)
+    {
+        auto RowStruct = Table->GetRowStruct();
+        if (!RowStruct.Get())
+        {
+            throw std::runtime_error("RowStruct was invalid");
+        }
+
+        static auto NAME_PalLocalizedTextData = FName(TEXT("PalLocalizedTextData"), FNAME_Add);
+        if (RowStruct.Get()->GetNamePrivate() != NAME_PalLocalizedTextData)
+        {
+            throw std::runtime_error("Row provided isn't equivalent to PalLocalizedTextData");
+        }
+
+        for (auto& [RowId, RowValue] : Rows.items())
+        {
+            if (!RowValue.is_string())
+            {
+                throw std::runtime_error("String value must be provided for a translation");
+            }
+
+            auto RowName = FName(RC::to_generic_string(RowId), FNAME_Add);
+            auto Row = std::bit_cast<FPalLocalizedTextData*>(Table->FindRowUnchecked(RowName));
+            if (Row)
+            {
+                Row->TextData = FText(RC::to_generic_string(RowValue.get<std::string>()));
+                PS::Log<LogLevel::Verbose>(STR("Localization row '{}' has been updated in {}\n"), RowName.ToString(), Table->GetName());
+            }
+            else
+            {
+                FPalLocalizedTextData NewRow{};
+                NewRow.TextData = FText(RC::to_generic_string(RowValue.get<std::string>()));
+                Table->AddRow(RowName, NewRow);
+                PS::Log<LogLevel::Verbose>(STR("Localization row '{}' has been added to {}\n"), RowName.ToString(), Table->GetName());
+            }
+        }
+    }
+
     void PalLanguageModLoader::LoadTranslations(const nlohmann::json& data)
     {
         for (auto& [TableName, TableData] : data.items())
         {
-            for (auto& [RowId, RowValue] : TableData.items())
+            auto Table = TryGetDatatableByName(TableName);
+            if (Table)
             {
-                auto Table = TryGetDatatableByName(TableName);
-                if (Table)
-                {
-                    auto RowStruct = Table->GetRowStruct();
-                    if (!RowStruct.Get())
-                    {
-                        throw std::runtime_error("RowStruct was invalid");
-                    }
-
-                    static auto NAME_PalLocalizedTextData = FName(TEXT("PalLocalizedTextData"), FNAME_Add);
-                    if (RowStruct.Get()->GetNamePrivate() != NAME_PalLocalizedTextData)
-                    {
-                        throw std::runtime_error("Row provided isn't equivalent to PalLocalizedTextData");
-                    }
-
-                    if (!RowValue.is_string())
-                    {
-                        throw std::runtime_error("String value must be provided for a translation");
-                    }
-
-                    auto RowName = FName(RC::to_generic_string(RowId), FNAME_Add);
-                    auto Row = std::bit_cast<FPalLocalizedTextData*>(Table->FindRowUnchecked(RowName));
-                    if (Row)
-                    {
-                        Row->TextData = FText(RC::to_generic_string(RowValue.get<std::string>()));
-                        PS::Log<LogLevel::Verbose>(STR("Localization row '{}' has been updated in {}\n"), RowName.ToString(), Table->GetName());
-                    }
-                    else
-                    {
-                        FPalLocalizedTextData NewRow{};
-                        NewRow.TextData = FText(RC::to_generic_string(RowValue.get<std::string>()));
-                        Table->AddRow(RowName, NewRow);
-                        PS::Log<LogLevel::Verbose>(STR("Localization row '{}' has been added to {}\n"), RowName.ToString(), Table->GetName());
-                    }
-                }
+                ApplyTranslationsToTable(Table, TableData);
             }
+#ifdef __linux__
+            else
+            {
+                // palhook: keep it for when the table registers (see OnDatatableSerialized).
+                auto& Pending = m_pendingTranslations[TableName];
+                if (!Pending.is_object()) Pending = nlohmann::json::object();
+                for (auto& [RowId, RowValue] : TableData.items()) Pending[RowId] = RowValue;
+                PS::Log<LogLevel::Normal>(STR("Translations for {} kept until the table registers ({} rows).\n"), RC::to_generic_string(TableName), Pending.size());
+            }
+#endif
         }
     }
+
+#ifdef __linux__
+    void PalLanguageModLoader::OnDatatableSerialized(RC::Unreal::UDataTable* datatable)
+    {
+        if (m_pendingTranslations.empty() || !datatable) return;
+        auto Name = RC::to_string(datatable->GetName());
+        auto It = m_pendingTranslations.find(Name);
+        if (It == m_pendingTranslations.end()) return;
+        try
+        {
+            ApplyTranslationsToTable(datatable, It->second);
+            PS::Log<LogLevel::Normal>(STR("{}: {} translation rows applied on registration.\n"), RC::to_generic_string(Name), It->second.size());
+        }
+        catch (const std::exception& e)
+        {
+            PS::Log<LogLevel::Error>(STR("Failed to apply translations to {}: {}\n"), RC::to_generic_string(Name), RC::to_generic_string(e.what()));
+        }
+        // Kept on purpose: on a dedicated server every language variant of a text table carries the same
+        // name and may register later (17 DT_ItemNameText_Common on the shadow); each one gets the rows.
+    }
+#endif
 
 	const std::string& PalLanguageModLoader::GetCurrentLanguage()
 	{
