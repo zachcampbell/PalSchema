@@ -306,6 +306,16 @@ namespace Palworld {
         }
     }
 
+    void PalMainLoader::EnsureCoreInitialized()
+    {
+        if (m_hasInit) return;
+        UECustom::AsyncTask(UECustom::ENamedThreads::GameThread, [this]() {
+            if (m_hasInit) return;
+            PS::Log<LogLevel::Normal>(STR("Core init queued from on_unreal_init (no UDataTable::Serialize arrived after start).\n"));
+            InitCore();
+        });
+    }
+
     void PalMainLoader::InitCore()
     {
         if (m_hasInit) return;

@@ -114,6 +114,9 @@ public:
         UECustom::EnsureGameThreadDrain();
 #endif
         MainLoader.Initialize();
+#ifdef __linux__
+        MainLoader.EnsureCoreInitialized();
+#endif
     }
 private:
     Palworld::PalMainLoader MainLoader;

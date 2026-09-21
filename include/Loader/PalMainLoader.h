@@ -62,6 +62,13 @@ namespace Palworld {
         void SetupAlternativePakPathReader();
 
         void InitCore();
+    public:
+        // palhook (Linux): InitCore normally runs from the first UDataTable::Serialize after PalSchema starts. On a
+        // dedicated server every table may already be loaded (a player standing in streamed content when the C++
+        // mods start), so that first Serialize never comes and no mod is ever applied. Queue it on the game thread;
+        // InitCore is idempotent and the seeded registry covers the tables loaded before it.
+        void EnsureCoreInitialized();
+    private:
 
         void RegisterLoader(std::unique_ptr<PalModLoaderBase> newLoader);
 
