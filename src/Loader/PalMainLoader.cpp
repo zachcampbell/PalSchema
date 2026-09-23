@@ -30,6 +30,8 @@
 #include "Loader/PalHelpGuideModLoader.h"
 #include "Loader/PalSpawnLoader.h"
 #include "Loader/PalMainLoader.h"
+#include <chrono>
+#include "SDK/Helper/LinuxObjectIndex.h"
 #include "Misc/FileWatchWrapper.h"
 #ifdef __linux__
 #include <Unreal/UObjectArray.hpp>
@@ -375,15 +377,19 @@ namespace Palworld {
                     // DT_PalBPClass silently did nothing (Paldemonium, run 114). Replay the serialize notification for
                     // every seeded table, on the game thread, before the GameInstanceInit loaders that depend on it.
                     int Replayed = 0;
+                    auto replayStart = std::chrono::steady_clock::now();
                     for (auto* Table : m_seededTables)
                     {
                         if (!Table || !m_datatableRegistry.Contains(Table)) continue;
                         for (auto& Loader : m_loaders) Loader->OnDatatableSerialized(Table);
                         ++Replayed;
                     }
-                    PS::Log<LogLevel::Normal>(STR("Replayed the serialize notification for {} boot-loaded data tables.\n"), Replayed);
+                    PS::Log<LogLevel::Normal>(STR("Replayed the serialize notification for {} boot-loaded data tables in {} ms.\n"), Replayed,
+                        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - replayStart).count());
                     PS::Log<LogLevel::Normal>(STR("Running GameInstanceInit loaders on the game thread.\n"));
+                    Palworld::LinuxObjectIndex::Invalidate();
                     SetupGameInstanceInitLoaders();
+                    Palworld::LinuxObjectIndex::Invalidate();
                 });
             }
         }
@@ -416,10 +422,19 @@ namespace Palworld {
             {
                 PS::Log<RC::LogLevel::Normal>(STR("Loading mod: {}\n"), modName);
 
+                auto modStart = std::chrono::steady_clock::now();
                 for (auto& loader : m_loaders)
                 {
+                    auto loaderStart = std::chrono::steady_clock::now();
                     loader->Load(modPath, modName, engineLifecyclePhase);
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - loaderStart).count();
+                    if (ms >= 100)
+                    {
+                        PS::Log<RC::LogLevel::Verbose>(STR("[timing] {} / {} took {} ms\n"), modName, loader->GetDisplayName(), ms);
+                    }
                 }
+                auto modMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - modStart).count();
+                PS::Log<RC::LogLevel::Normal>(STR("[timing] mod {} phase {} total {} ms\n"), modName, static_cast<int>(engineLifecyclePhase), modMs);
             }
             catch (const std::exception& e)
             {

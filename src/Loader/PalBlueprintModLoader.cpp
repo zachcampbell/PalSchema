@@ -11,6 +11,8 @@
 #include "Utility/Logging.h"
 #include "Utility/JsonHelpers.h"
 #include "Loader/PalBlueprintModLoader.h"
+#include <chrono>
+#include "SDK/Helper/LinuxObjectIndex.h"
 #include "SDK/Classes/KismetSystemLibrary.h"
 #include "SDK/Helper/BPGeneratedClassHelper.h"
 #include "SDK/Helper/Memory.h"
@@ -173,6 +175,27 @@ namespace Palworld {
         for (auto& [assetName, assetData] : data.items())
         {
             auto assetNameWide = RC::to_generic_string(assetName);
+#ifdef __linux__
+            // palhook: "/Script/Module.Class" keys address a native class (no asset to load): apply to its CDO and to
+            // every live instance. Lets a server-side mod reach objects the game already built from the save, e.g.
+            // PalBaseCampModel.AreaRange for bases founded before the mod.
+            if (assetNameWide.starts_with(TEXT("/Script/")))
+            {
+                auto* cls = UECustom::UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, assetNameWide.c_str());
+                if (!cls) { PS::Log<LogLevel::Error>(TEXT("Failed to apply changes, native class '{}' was not found\n"), assetNameWide); continue; }
+                auto& cdo = cls->GetClassDefaultObject();
+                if (cdo.Get()) ApplyData(assetData, cdo.Get());
+                RC::Unreal::TArray<UObject*> instances; int applied = 0;
+                UECustom::UObjectGlobals::GetObjectsOfClass(cls, instances);
+                for (auto* inst : instances)
+                {
+                    if (!inst || inst == cdo.Get() || inst->HasAnyFlags(RC::Unreal::RF_ClassDefaultObject)) continue;
+                    ApplyData(assetData, inst); ++applied;
+                }
+                PS::Log<RC::LogLevel::Normal>(TEXT("Applied changes to native class {} and {} live instance(s)\n"), cls->GetNamePrivate().ToString(), applied);
+                continue;
+            }
+#endif
             if (assetNameWide.starts_with(TEXT("/Game/")))
             {
                 // palhook: libstdc++ has no char16_t regex; this is ^(.*/)([^/.]+)$ -> $1$2.$2_C by hand.
@@ -183,8 +206,28 @@ namespace Palworld {
                         assetNameWide = assetNameWide + u"." + tail + u"_C";
                 }
 
+                auto tLoad0 = std::chrono::steady_clock::now();
+                UObject* asset = nullptr;
+#ifdef __linux__
+                // palhook: the blocking load costs ~235 ms per call on this server even for classes already in
+                // memory; ask the engine's StaticFindObject first and only load on a miss.
+                // palhook: the blocking load costs ~235 ms per call on this server even for classes already in
+                // memory (it flushes async loading). Resolve through the engine first (no load, hash lookup) and only
+                // load on a miss. PalSchema's own StaticFindObject is UE4SS's slow walk on Linux, not usable here.
                 auto softObjectPtr = RC::Unreal::TSoftObjectPtr<UObject>(RC::Unreal::FSoftObjectPath(FString(assetNameWide)));
-                auto asset = UECustom::UKismetSystemLibrary::LoadAsset_Blocking(softObjectPtr);
+                asset = UECustom::UKismetSystemLibrary::Conv_SoftObjectReferenceToObject(softObjectPtr);
+                const bool foundLoaded = asset != nullptr;
+                if (!asset)
+                {
+                    asset = UECustom::UKismetSystemLibrary::LoadAsset_Blocking(softObjectPtr);
+                }
+#else
+                {
+                    auto softObjectPtr = RC::Unreal::TSoftObjectPtr<UObject>(RC::Unreal::FSoftObjectPath(FString(assetNameWide)));
+                    asset = UECustom::UKismetSystemLibrary::LoadAsset_Blocking(softObjectPtr);
+                }
+#endif
+                auto tLoad1 = std::chrono::steady_clock::now();
                 if (!asset)
                 {
                     throw std::runtime_error(RC::fmt("Failed to apply blueprint changes, asset '%S' was invalid", assetNameWide.c_str()));
@@ -193,9 +236,32 @@ namespace Palworld {
                 asset->SetRootSet();
 
                 auto& defaultObject = static_cast<UClass*>(asset)->GetClassDefaultObject();
+                auto tApply0 = std::chrono::steady_clock::now();
                 ApplyData(assetData, defaultObject.Get());
+                auto tApply1 = std::chrono::steady_clock::now();
 
                 PS::Log<RC::LogLevel::Normal>(TEXT("Applied changes to {}\n"), static_cast<UClass*>(asset)->GetNamePrivate().ToString());
+#ifdef __linux__
+                // palhook: on a dedicated server PalSchema starts after the game instance and its settings objects
+                // were already constructed from the class defaults, so a CDO edit alone never reaches them. Apply
+                // the same data to every live instance of the class as well.
+                {
+                    auto* cls = static_cast<UClass*>(asset); int applied = 0;
+                    auto tFind0 = std::chrono::steady_clock::now();
+                    auto instances = Palworld::LinuxObjectIndex::Instances(cls);
+                    auto tFind1 = std::chrono::steady_clock::now();
+                    for (auto* inst : instances)
+                    {
+                        if (!inst || inst == defaultObject.Get() || inst->HasAnyFlags(RC::Unreal::RF_ClassDefaultObject)) continue;
+                        ApplyData(assetData, inst); ++applied;
+                    }
+                    auto tInst1 = std::chrono::steady_clock::now();
+                    if (applied) PS::Log<RC::LogLevel::Normal>(TEXT("Applied the same changes to {} live instance(s) of {}\n"), applied, cls->GetNamePrivate().ToString());
+                    auto msOf = [](auto a, auto b) { return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count(); };
+                    PS::Log<RC::LogLevel::Verbose>(TEXT("[timing] blueprint {}: {} {} ms, cdo apply {} ms, find {} ms ({} objs), instances apply {} ms\n"),
+                        cls->GetNamePrivate().ToString(), foundLoaded ? STR("found") : STR("load"), msOf(tLoad0, tLoad1), msOf(tApply0, tApply1), msOf(tFind0, tFind1), instances.size(), msOf(tFind1, tInst1));
+                }
+#endif
             }
         }
     }
@@ -266,6 +332,14 @@ namespace Palworld {
                     // null Object means that this property could be a component template, so we should check if it has an associated GEN_VARIABLE.
                     HandleInheritableComponent(objectClass, propertyNameWide, propertyValue);
                 }
+#ifdef __linux__
+                else if (propertyValue.is_object())
+                {
+                    // palhook: on a live instance the component already exists; a JSON object for it means "edit that
+                    // component's properties" (same shape as the CDO/template path), so recurse into the pointed-to object.
+                    ApplyData(propertyValue, objectValue);
+                }
+#endif
                 else
                 {
                     // Object has a pointer assigned to it so we let PropertyHelper handle it.

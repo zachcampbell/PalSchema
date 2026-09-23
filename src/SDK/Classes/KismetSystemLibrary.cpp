@@ -39,6 +39,17 @@ namespace UECustom {
         return LoadedAsset;
     }
 
+    UObject* UKismetSystemLibrary::Conv_SoftObjectReferenceToObject(const TSoftObjectPtr<UObject>& SoftObject)
+    {
+        UE_BEGIN_NATIVE_FUNCTION_BODY("/Script/Engine.KismetSystemLibrary:Conv_SoftObjectReferenceToObject")
+        UE_SET_STATIC_SELF("/Script/Engine.Default__KismetSystemLibrary")
+        UE_COPY_PROPERTY(SoftObject, TSoftObjectPtr<UObject>)
+
+        UE_CALL_STATIC_FUNCTION()
+
+        UE_RETURN_PROPERTY(UObject*)
+    }
+
 	UKismetSystemLibrary* UKismetSystemLibrary::GetDefaultObj()
 	{
 		static auto Self = UECustom::UObjectGlobals::StaticFindObject<UKismetSystemLibrary*>(nullptr, nullptr, TEXT("/Script/Engine.Default__KismetSystemLibrary"));

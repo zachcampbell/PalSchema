@@ -13,6 +13,8 @@
 #include "Utility/Logging.h"
 #include "Utility/JsonHelpers.h"
 #include "Loader/PalBuildingModLoader.h"
+#include <chrono>
+#include "SDK/Helper/LinuxObjectIndex.h"
 
 using namespace RC;
 using namespace RC::Unreal;
@@ -170,23 +172,23 @@ namespace Palworld {
             }
         }
 
-		SetupIconData(BuildingId, Data);
+		{ auto _t = std::chrono::steady_clock::now(); SetupIconData(BuildingId, Data); auto _ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _t).count(); if (_ms >= 50) PS::Log<LogLevel::Verbose>(STR("[timing] building {} SetupIconData {} ms\n"), BuildingId.ToString(), _ms); }
 
-        SetupTranslations(BuildingId, Data);
+        { auto _t = std::chrono::steady_clock::now(); SetupTranslations(BuildingId, Data); auto _ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _t).count(); if (_ms >= 50) PS::Log<LogLevel::Verbose>(STR("[timing] building {} SetupTranslations {} ms\n"), BuildingId.ToString(), _ms); }
 
 		if (Data.contains("BuildingData"))
 		{
-			SetupBuildData(BuildingId, Data.at("BuildingData"));
+			{ auto _t = std::chrono::steady_clock::now(); SetupBuildData(BuildingId, Data.at("BuildingData")); auto _ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _t).count(); if (_ms >= 50) PS::Log<LogLevel::Verbose>(STR("[timing] building {} SetupBuildData {} ms\n"), BuildingId.ToString(), _ms); }
 		}
 
 		if (Data.contains("Assignments"))
 		{
-            SetupAssignments(BuildingId, Data.at("Assignments"));
+            { auto _t = std::chrono::steady_clock::now(); SetupAssignments(BuildingId, Data.at("Assignments")); auto _ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _t).count(); if (_ms >= 50) PS::Log<LogLevel::Verbose>(STR("[timing] building {} SetupAssignments {} ms\n"), BuildingId.ToString(), _ms); }
 		}
 
         if (Data.contains("Technology"))
         {
-            SetupTechnologyData(BuildingId, Data.at("Technology"));
+            { auto _t = std::chrono::steady_clock::now(); SetupTechnologyData(BuildingId, Data.at("Technology")); auto _ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _t).count(); if (_ms >= 50) PS::Log<LogLevel::Verbose>(STR("[timing] building {} SetupTechnologyData {} ms\n"), BuildingId.ToString(), _ms); }
         }
 
 		if (Data.contains("Crop"))
@@ -328,8 +330,9 @@ namespace Palworld {
         auto ElemProp = IdSetProp->GetElementProp();
         FName Id = BuildingId;
         int32 count = 0;
-        UObjectGlobals::ForEachUObject([&](UObject* obj, int32, int32) {
-            if (!obj || obj->HasAnyFlags(RF_ClassDefaultObject) || !obj->IsA(DataMapClass)) return LoopAction::Continue;
+        auto tReg0 = std::chrono::steady_clock::now();
+        for (auto* obj : Palworld::LinuxObjectIndex::Instances(DataMapClass))
+        {
             auto base = reinterpret_cast<uint8*>(obj);
             auto Set = reinterpret_cast<FScriptSet*>(base + IdSetProp->GetOffset_Internal());
             // Hash and equality come from the engine's own FNameProperty so the game's lookups find the element.
@@ -350,9 +353,9 @@ namespace Palworld {
                 Map->Rehash(MapLayout, [&](const void* Src) { return KeyProp->GetValueTypeHash(Src); });
             }
             ++count;
-            return LoopAction::Continue;
-        });
-        PS::Log<LogLevel::Normal>(STR("Linux: registered build object '{}' in {} live build data map(s){}.\n"), BuildingId.ToString(), count, copyValue ? STR("") : STR(" (ids only)"));
+        }
+        PS::Log<LogLevel::Verbose>(STR("Linux: registered build object '{}' in {} live build data map(s){} in {} ms.\n"), BuildingId.ToString(), count, copyValue ? STR("") : STR(" (ids only)"),
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - tReg0).count());
     }
 #endif
 
