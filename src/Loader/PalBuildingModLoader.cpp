@@ -6,6 +6,10 @@
 #include "Unreal/Engine/UDataTable.hpp"
 #include "Helpers/String.hpp"
 #include "SDK/Helper/PropertyHelper.h"
+#include "SDK/Structs/Custom/FScriptMapHelper.h"
+#include "SDK/Classes/Custom/UObjectGlobals.h"
+#include "Unreal/CoreUObject/UObject/UnrealType.hpp"
+#include <cstring>
 #include "Utility/Logging.h"
 #include "Utility/JsonHelpers.h"
 #include "Loader/PalBuildingModLoader.h"
@@ -224,6 +228,9 @@ namespace Palworld {
                         PropertyHelper::CopyJsonValueToContainer(TableRow, Property, Data.at(PropertyName));
                     }
                 }
+#ifdef __linux__
+                LinuxRegisterLiveBuildObject(BuildingId, TableRow, TableRowStruct);
+#endif
             }
             catch (const std::exception& e)
             {
@@ -267,6 +274,9 @@ namespace Palworld {
                 }
 
                 m_buildObjectDataTable->AddRow(BuildingId, *static_cast<RC::Unreal::FTableRowBase*>(RowData));
+#ifdef __linux__
+                LinuxRegisterLiveBuildObject(BuildingId, RowData, TableRowStruct);
+#endif
             }
             catch (const std::exception& e)
             {
@@ -275,6 +285,76 @@ namespace Palworld {
             }
         }
 	}
+
+
+#ifdef __linux__
+    // palhook: on a dedicated server the world's PalBuildOperator built its UPalBuildObjectDataMap from
+    // DT_BuildObjectDataTable at world start, before PalSchema's rows landed (PalSchema initializes ~35 s after
+    // launch here, after the map has loaded). UPalMapObjectManager's build handler looks the request's MapObjectId
+    // up in that map's BuildMapObjectIds set and answers FailedPlayerCannotSpawn for anything missing, so every
+    // PalSchema building was unplaceable (Diagonal Buildables, run 150). Land each new row in every live data map:
+    // the id into the set, and a deep copy of the row into BuildObjectDataIdMap (its value type is the row struct).
+    void PalBuildingModLoader::LinuxRegisterLiveBuildObject(const FName& BuildingId, void* RowData, UScriptStruct* RowStruct)
+    {
+        PS::Log<LogLevel::Verbose>(STR("Linux: live registration for build object '{}'.\n"), BuildingId.ToString());
+        static auto DataMapClass = UECustom::UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, STR("/Script/Pal.PalBuildObjectDataMap"));
+        if (!DataMapClass)
+        {
+            static bool warned = false;
+            if (!warned) { warned = true; PS::Log<LogLevel::Warning>(STR("Linux: PalBuildObjectDataMap class not found; new buildings will not be placeable until restart.\n")); }
+            return;
+        }
+        auto IdMapProp = PropertyHelper::CastProperty<FMapProperty>(PropertyHelper::GetPropertyByName(DataMapClass, STR("BuildObjectDataIdMap")));
+        // FSetProperty's static class is not resolvable through the cast on this port; match the class name instead.
+        auto IdSetPropRaw = PropertyHelper::GetPropertyByName(DataMapClass, STR("BuildMapObjectIds"));
+        auto IdSetProp = (IdSetPropRaw && IdSetPropRaw->GetClass().GetName() == STR("SetProperty")) ? static_cast<FSetProperty*>(IdSetPropRaw) : nullptr;
+        if (!IdMapProp || !IdSetProp)
+        {
+            PS::Log<LogLevel::Warning>(STR("Linux: PalBuildObjectDataMap layout changed (map {} set {}); skipping live registration of '{}'.\n"),
+                static_cast<void*>(IdMapProp), static_cast<void*>(IdSetProp), BuildingId.ToString());
+            return;
+        }
+        auto KeyProp = IdMapProp->GetKeyProp();
+        auto ValueProp = IdMapProp->GetValueProp();
+        auto ValueStructProp = PropertyHelper::CastProperty<FStructProperty>(ValueProp);
+        const bool copyValue = ValueStructProp && ValueStructProp->GetStruct() == RowStruct;
+        if (!copyValue)
+        {
+            static bool warned = false;
+            if (!warned) { warned = true; PS::Log<LogLevel::Warning>(STR("Linux: BuildObjectDataIdMap value type is not the DT_BuildObjectDataTable row struct; registering ids only.\n")); }
+        }
+        auto MapLayout = FScriptMap::GetScriptLayout(KeyProp->GetSize(), KeyProp->GetMinAlignment(), ValueProp->GetSize(), ValueProp->GetMinAlignment());
+        auto SetLayout = FScriptSet::GetScriptLayout(sizeof(FName), alignof(FName));
+        auto ElemProp = IdSetProp->GetElementProp();
+        FName Id = BuildingId;
+        int32 count = 0;
+        UObjectGlobals::ForEachUObject([&](UObject* obj, int32, int32) {
+            if (!obj || obj->HasAnyFlags(RF_ClassDefaultObject) || !obj->IsA(DataMapClass)) return LoopAction::Continue;
+            auto base = reinterpret_cast<uint8*>(obj);
+            auto Set = reinterpret_cast<FScriptSet*>(base + IdSetProp->GetOffset_Internal());
+            // Hash and equality come from the engine's own FNameProperty so the game's lookups find the element.
+            Set->Add(&Id, SetLayout,
+                [&](const void* e) { return ElemProp->GetValueTypeHash(e); },
+                [&](const void* a, const void* b) { return ElemProp->Identical(a, b); },
+                [&](void* dst) { std::memcpy(dst, &Id, sizeof(FName)); },
+                [](void*) {});
+            if (copyValue)
+            {
+                auto Map = reinterpret_cast<FScriptMap*>(base + IdMapProp->GetOffset_Internal());
+                UECustom::FScriptMapHelper Helper(Map, MapLayout, KeyProp, ValueProp);
+                UECustom::FManagedValue Pair;
+                Helper.InitializePair(Pair);
+                std::memcpy(Pair.GetData(), &Id, sizeof(FName));
+                ValueProp->CopySingleValue(static_cast<uint8*>(Pair.GetData()) + MapLayout.ValueOffset, RowData);
+                Helper.Add(Pair);
+                Map->Rehash(MapLayout, [&](const void* Src) { return KeyProp->GetValueTypeHash(Src); });
+            }
+            ++count;
+            return LoopAction::Continue;
+        });
+        PS::Log<LogLevel::Normal>(STR("Linux: registered build object '{}' in {} live build data map(s){}.\n"), BuildingId.ToString(), count, copyValue ? STR("") : STR(" (ids only)"));
+    }
+#endif
 
 	void PalBuildingModLoader::SetupIconData(const RC::Unreal::FName& BuildingId, const nlohmann::json& Data)
 	{

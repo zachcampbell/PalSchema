@@ -44,6 +44,9 @@ namespace Palworld {
 		void Edit(uint8_t* ExistingRow, const RC::Unreal::FName& BuildingId, const nlohmann::json& Data);
 
 		void SetupBuildData(const RC::Unreal::FName& BuildingId, const nlohmann::json& Data);
+#ifdef __linux__
+		void LinuxRegisterLiveBuildObject(const RC::Unreal::FName& BuildingId, void* RowData, RC::Unreal::UScriptStruct* RowStruct);
+#endif
 
 		void SetupIconData(const RC::Unreal::FName& BuildingId, const nlohmann::json& Data);
 
