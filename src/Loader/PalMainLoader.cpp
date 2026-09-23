@@ -31,6 +31,9 @@
 #include "Loader/PalSpawnLoader.h"
 #include "Loader/PalMainLoader.h"
 #include <chrono>
+#include <unistd.h>
+#include <thread>
+#include <sstream>
 #include "SDK/Helper/LinuxObjectIndex.h"
 #include "Misc/FileWatchWrapper.h"
 #ifdef __linux__
@@ -311,11 +314,29 @@ namespace Palworld {
     void PalMainLoader::EnsureCoreInitialized()
     {
         if (m_hasInit) return;
-        UECustom::AsyncTask(UECustom::ENamedThreads::GameThread, [this]() {
-            if (m_hasInit) return;
-            PS::Log<LogLevel::Normal>(STR("Core init queued from on_unreal_init (no UDataTable::Serialize arrived after start).\n"));
-            InitCore();
-        });
+        // palhook: with UE4SS up ~7 s after launch (port patch 28) PalSchema's loaders ran while the server's own
+        // startup streaming was still in flight, and Paldemonium's ~100 blocking blueprint loads there left every
+        // later client join stuck at "connected" (runs 163-166: joins worked with PalSchema off or Paldemonium
+        // parked). Hold core init until the process has been up 30 s, the timing that always joined fine.
+        auto uptime = [] {
+            std::ifstream f("/proc/self/stat"); std::string line; std::getline(f, line);
+            auto pos = line.rfind(')'); std::istringstream ss(line.substr(pos + 2));
+            std::string tok; long long startTicks = 0;
+            for (int i = 3; i <= 22 && ss >> tok; ++i) if (i == 22) startTicks = std::stoll(tok);
+            std::ifstream up("/proc/uptime"); double sysUp = 0; up >> sysUp;
+            return sysUp - static_cast<double>(startTicks) / static_cast<double>(sysconf(_SC_CLK_TCK));
+        };
+        const double minUptime = 30.0;
+        double remaining = minUptime - uptime();
+        if (remaining < 0) remaining = 0;
+        PS::Log<LogLevel::Normal>(STR("Core init queued from on_unreal_init; holding {:.1f} s so the server's startup streaming settles first.\n"), remaining);
+        std::thread([this, remaining]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<long long>(remaining * 1000.0)));
+            UECustom::AsyncTask(UECustom::ENamedThreads::GameThread, [this]() {
+                if (m_hasInit) return;
+                InitCore();
+            });
+        }).detach();
     }
 
     void PalMainLoader::InitCore()
