@@ -15,6 +15,7 @@
 #include "Loader/PalBuildingModLoader.h"
 #include <chrono>
 #include "SDK/Helper/LinuxObjectIndex.h"
+#include "Loader/LinuxHeldMapObjects.h"
 
 using namespace RC;
 using namespace RC::Unreal;
@@ -329,6 +330,7 @@ namespace Palworld {
         auto SetLayout = FScriptSet::GetScriptLayout(sizeof(FName), alignof(FName));
         auto ElemProp = IdSetProp->GetElementProp();
         FName Id = BuildingId;
+        Palworld::LinuxHeldMapObjects::NoteRegisteredId(Id);
         int32 count = 0;
         auto tReg0 = std::chrono::steady_clock::now();
         for (auto* obj : Palworld::LinuxObjectIndex::Instances(DataMapClass))

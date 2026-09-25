@@ -23,6 +23,13 @@ What is different from the Windows build:
 - Hardcoded Windows vtable indices are +1 here (Itanium double destructor slot) and hardcoded member
   offsets are resolved through reflection where they differed (UWorldPartitionRuntimeLevelStreamingCell).
 - Actor spawning goes through a reflection-driven parameter block (`src/SDK/Helper/LinuxSpawn.cpp`).
+- Placed mod buildings in the world save: the server applies its save about 5 s after launch, long before
+  PalSchema can register building ids, and one failed map object fails the init manager's
+  ApplyWorldSaveData sequence for good (no logins, no autosave). `linux/palhold/` builds libpalhold.so,
+  preloaded after libUE4SS.so (`LD_PRELOAD=.../libUE4SS.so:.../libpalhold.so`): it holds those saved
+  entries with their init handles still pending, and `src/Loader/LinuxHeldMapObjects.cpp` releases them
+  through the game's own apply once the buildings are registered. PalSchema writes the id list
+  (`Mods/PalSchema/held-map-object-ids.txt`) every boot for the next one.
 - Not available on Linux: the item save-safety hooks (three of seven functions located, PalSchema
   installs them as a set) and FindComponentTemplateByName (stripped from the shipping binary).
 

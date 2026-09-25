@@ -35,6 +35,7 @@
 #include <thread>
 #include <sstream>
 #include "SDK/Helper/LinuxObjectIndex.h"
+#include "Loader/LinuxHeldMapObjects.h"
 #include "Misc/FileWatchWrapper.h"
 #ifdef __linux__
 #include <Unreal/UObjectArray.hpp>
@@ -411,6 +412,9 @@ namespace Palworld {
                     Palworld::LinuxObjectIndex::Invalidate();
                     SetupGameInstanceInitLoaders();
                     Palworld::LinuxObjectIndex::Invalidate();
+                    // palhook: saved map objects of mod buildings were held back at boot by libpalhold (the world
+                    // save is applied before PalSchema exists); the ids are registered now, so let them load.
+                    Palworld::LinuxHeldMapObjects::ReleaseHeld();
                 });
             }
         }
