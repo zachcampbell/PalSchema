@@ -27,6 +27,30 @@
 using namespace RC;
 using namespace RC::Unreal;
 
+namespace {
+    // A mod written for another game version can carry dozens of item properties this version lacks (Paldemonium: over
+    // a thousand lines per boot). With debug logging off, each is counted and OnLoad reports one line per mod.
+    int GMissingItemProperties = 0;
+
+    void NoteMissingProperty(const RC::StringType& Key, const RC::StringType& Where)
+    {
+        if (PS::PSConfig::Get()->IsDebugLoggingEnabled())
+        {
+            PS::Log<LogLevel::Warning>(STR("Property '{}' not found in {}.\n"), Key, Where);
+            return;
+        }
+        ++GMissingItemProperties;
+    }
+
+    void ReportMissingProperties(const RC::StringType& ModName)
+    {
+        if (GMissingItemProperties == 0) return;
+        PS::Log<LogLevel::Warning>(STR("{}: {} item propert{} not on this game version's item classes were skipped (enableDebugLogging lists each one).\n"),
+                                   ModName, GMissingItemProperties, GMissingItemProperties == 1 ? STR("y") : STR("ies"));
+        GMissingItemProperties = 0;
+    }
+}
+
 namespace Palworld {
 	PalItemModLoader::PalItemModLoader() : PalModLoaderBase("items") {
         SetDisplayName(TEXT("Item Loader"));
@@ -44,6 +68,7 @@ namespace Palworld {
         PS::JsonHelpers::ParseJsonFilesInPath(loaderPath, [&](const nlohmann::json& Data) {
             LoadItems(Data);
         });
+    ReportMissingProperties(modName);
 	}
 
     void PalItemModLoader::OnAutoReload(const RC::StringType& modName, const std::filesystem::path& modFilePath)
@@ -51,6 +76,7 @@ namespace Palworld {
         PS::JsonHelpers::ParseJsonFileInPath(modFilePath, [&](const nlohmann::json& Data) {
             LoadItems(Data);
         });
+        ReportMissingProperties(modName);
     }
 
     bool PalItemModLoader::CanInitialize(const EEngineLifecyclePhase& engineLifecyclePhase)
@@ -202,7 +228,7 @@ namespace Palworld {
             }
             else
             {
-                PS::Log<LogLevel::Warning>(STR("Property '{}' not found in Item '{}'.\n"), KeyWide, ItemId.ToString());
+                NoteMissingProperty(KeyWide, STR("Item '") + ItemId.ToString() + STR("'"));
             }
         }
 
@@ -238,7 +264,7 @@ namespace Palworld {
             }
             else
             {
-                PS::Log<LogLevel::Warning>(STR("Property '{}' not found in Item '{}'.\n"), KeyWide, ItemId.ToString());
+                NoteMissingProperty(KeyWide, STR("Item '") + ItemId.ToString() + STR("'"));
             }
         }
 
@@ -288,7 +314,7 @@ namespace Palworld {
 			}
             else
             {
-                PS::Log<LogLevel::Warning>(STR("Property '{}' not found in Item Recipe -> '{}'.\n"), KeyWide, ItemId.ToString());
+                NoteMissingProperty(KeyWide, STR("Item Recipe -> '") + ItemId.ToString() + STR("'"));
             }
 		}
 
@@ -329,7 +355,7 @@ namespace Palworld {
 			}
             else
             {
-                PS::Log<LogLevel::Warning>(STR("Property '{}' not found in Item Recipe -> '{}'.\n"), KeyWide, ItemId.ToString());
+                NoteMissingProperty(KeyWide, STR("Item Recipe -> '") + ItemId.ToString() + STR("'"));
             }
 		}
 
